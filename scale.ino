@@ -7,7 +7,8 @@
 #include <EEPROM.h>
 #include "secrets.h"
 
-#define DEVICE_ID "Scale_1"
+#define DEVICE_UUID "b4506cfd-135d-466a-b2dc-a85de6586b84"
+#define DEVICE_TYPE "SCALE"
 
 #define SERVICE_UUID "68b6285c-df48-4809-9b0d-8ff8196996d8"
 #define CHARACTERISTIC_UUID "8f46de3a-b1d6-4fa2-9298-a444f2e0f10d"
@@ -212,7 +213,7 @@ class SettingCharacteristicCallback : public BLECharacteristicCallbacks
   void onRead(BLECharacteristic *pCharacteristic) override
   {
     Serial.println("SampleLoadCellCallback->onRead: Called");
-    pCharacteristic->setValue(DEVICE_ID);
+    pCharacteristic->setValue(String(DEVICE_UUID)+","+String(DEVICE_TYPE));
   }
 };
 
@@ -278,7 +279,7 @@ void postWeight()
     http.addHeader("Content-Type", "application/json");
     http.addHeader("Prefer", "return=minimal");
     String payload =  "{ \"value\": \"" + String(weight) + "\", " +
-                      "\"device_id\":\"" + DEVICE_ID + "\" }";
+                      "\"device_id\":\"" + DEVICE_UUID + "\" }";
 
     int httpResponseCode = http.POST(payload);
 
@@ -310,7 +311,7 @@ void postWeight()
 
 void setUpBLEServer()
 {
-  BLEDevice::init(DEVICE_ID);
+  BLEDevice::init(String(DEVICE_TYPE)+" "+String(DEVICE_UUID));
   pServer = BLEDevice::createServer();
   pServer->setCallbacks(new BaseBLEServerCallbacks());
 }
