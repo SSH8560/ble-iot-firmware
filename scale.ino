@@ -27,7 +27,8 @@
 HX711 scale(DOUT, PD_SCK);
 BLEServer *pServer;
 BLECharacteristic *loadCellWeightCharacteristic;
-BLECharacteristic *settingCharacteristic;
+BLECharacteristic *wifiCredentialCharacteristic;
+BLECharacteristic *wifiConnectionCharacteristic;
 
 bool client_is_connected = false;
 bool wifi_is_connected = false;
@@ -51,16 +52,16 @@ void connectToWiFi(const char *ssid, const char *password)
     {
       Serial.println("Failed to connect to WiFi: Timeout");
       wifi_is_connected = false;
-      settingCharacteristic->setValue("fail");
-      settingCharacteristic->notify();
+      wifiConnectionCharacteristic->setValue("disconnected");
+      wifiConnectionCharacteristic->notify();
       return;
     }
     delay(500);
     Serial.print(".");
   }
   wifi_is_connected = true;
-  settingCharacteristic->setValue("success");
-  settingCharacteristic->notify();
+  wifiConnectionCharacteristic->setValue("connected");
+  wifiConnectionCharacteristic->notify();
   Serial.println("Connected to WiFi");
 }
 
@@ -162,6 +163,22 @@ class SettingDescriptorCallback : public BLEDescriptorCallbacks
     }
   }
 };
+class WifiConnectionDescriptorCallback : public BLEDescriptorCallbacks
+{
+  void onWrite(BLEDescriptor *pDescriptor)
+  {
+    u_int8_t desc = (*(pDescriptor->getValue()));
+    Serial.println(std::to_string(desc).c_str());
+    if (desc == 1)
+    {
+      Serial.println("Notify on");
+    }
+    else
+    {
+      Serial.println("Notify off");
+    }
+  }
+};
 class SettingWifiCredentialCharacteristicCallback : public BLECharacteristicCallbacks
 {
   void onWrite(BLECharacteristic *pCharacteristic) override
@@ -189,6 +206,8 @@ class SettingWifiCredentialCharacteristicCallback : public BLECharacteristicCall
     connectToWiFi(ssid.c_str(), password.c_str());
 
     saveWiFiCredentialsToEEPROM(ssid.c_str(), password.c_str());
+    pCharacteristic->setValue(value);
+    pCharacteristic->notify();
   }
   void onRead(BLECharacteristic *pCharacteristic) override
   {
@@ -327,7 +346,11 @@ void postWeight()
 
 void setUpBLEServer()
 {
-  BLEDevice::init(String(DEVICE_TYPE)+" "+String(DEVICE_UUID));
+  int dashIndex = String(DEVICE_UUID).indexOf('-');
+  String shortUUID = String(DEVICE_UUID).substring(0, dashIndex);
+  String deviceName = String(DEVICE_TYPE) + "_" + shortUUID;
+
+  BLEDevice::init(deviceName);
   pServer = BLEDevice::createServer();
   pServer->setCallbacks(new BaseBLEServerCallbacks());
 }
@@ -361,28 +384,33 @@ void setUpBLEService()
   loadCellCalibrationCharacteristic->setCallbacks(new LoadCellCalibrationCallback());
 
   // Setting Wifi Credential
-  settingCharacteristic = settingService->createCharacteristic(
+  wifiCredentialCharacteristic = settingService->createCharacteristic(
       SETTING_WIFI_CREDENTIAL_CHARACTERISTIC_UUID,
       BLECharacteristic::PROPERTY_WRITE |
         BLECharacteristic::PROPERTY_NOTIFY |
         BLECharacteristic::PROPERTY_READ);
-  settingCharacteristic->setCallbacks(new SettingWifiCredentialCharacteristicCallback());
+  wifiCredentialCharacteristic->setCallbacks(new SettingWifiCredentialCharacteristicCallback());
 
   BLEDescriptor *pSettingCCCDescriptor = new BLEDescriptor((uint16_t)0x2902);
   pSettingCCCDescriptor->setCallbacks(new SettingDescriptorCallback());
-  settingCharacteristic->addDescriptor(pSettingCCCDescriptor);
+  wifiCredentialCharacteristic->addDescriptor(pSettingCCCDescriptor);
 
   // Setting Wifi Connection Status
-  settingCharacteristic = settingService->createCharacteristic(
+  wifiConnectionCharacteristic = settingService->createCharacteristic(
       SETTING_WIFI_CONNECTION_STATUS_CHARACTERISTIC_UUID,
+        BLECharacteristic::PROPERTY_NOTIFY |
         BLECharacteristic::PROPERTY_READ);
-  settingCharacteristic->setCallbacks(new SettingWifiConnectionStatusCallBack());
+  wifiConnectionCharacteristic->setCallbacks(new SettingWifiConnectionStatusCallBack());
+
+  BLEDescriptor *pWifiConnectionCCCDescriptor = new BLEDescriptor((uint16_t)0x2902);
+  pWifiConnectionCCCDescriptor->setCallbacks(new WifiConnectionDescriptorCallback());
+  wifiConnectionCharacteristic->addDescriptor(pWifiConnectionCCCDescriptor);
 
   // Setting Device Info
-  settingCharacteristic = settingService->createCharacteristic(
+  BLECharacteristic *settingDeviceInfoCharacteristic = settingService->createCharacteristic(
       SETTING_DEVICE_INFO_CHARACTERISTIC_UUID,
         BLECharacteristic::PROPERTY_READ);
-  settingCharacteristic->setCallbacks(new SettingDeviceInfoCallback());
+  settingDeviceInfoCharacteristic->setCallbacks(new SettingDeviceInfoCallback());
 
   settingService->start();
   service->start();
