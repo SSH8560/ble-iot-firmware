@@ -6,26 +6,27 @@
 #include <HTTPClient.h>
 #include <EEPROM.h>
 #include "secrets.h"
+#include "EEPROMUtils.h"
 
 #define DEVICE_UUID "b4506cfd-135d-466a-b2dc-a85de6586b84"
 #define DEVICE_TYPE "SCALE"
 
-#define SERVICE_UUID "68b6285c-df48-4809-9b0d-8ff8196996d8"
-#define CHARACTERISTIC_UUID "8f46de3a-b1d6-4fa2-9298-a444f2e0f10d"
+#define LOAD_CELL_SERVICE_UUID "68b6285c-df48-4809-9b0d-8ff8196996d8"
+#define LOAD_CELL_WEIGHT_CHARACTERISTIC_UUID "8f46de3a-b1d6-4fa2-9298-a444f2e0f10d"
 #define LOAD_CELL_TARE_CHARACTERISTIC_UUID "717a80d8-2e1e-42fb-bd94-ec7bdb345c65"
 #define LOAD_CELL_CALIBRATION_CHARACTERISTIC_UUID "5ad21362-2a96-4d45-836b-dcb7e28dd1b8"
 #define SETTING_SERVICE_UUD "3126d1ed-031f-4470-8906-3a3b90bc039a"
-#define SETTING_CHARACTERISTIC_UUID "1683d984-ba48-4ad4-869c-fcff86e39ce5"
-
-#define EEPROM_SIZE 512
-#define EEPROM_SSID_START 0
-#define EEPROM_PASS_START 100
+#define SETTING_WIFI_CREDENTIAL_CHARACTERISTIC_UUID "1683d984-ba48-4ad4-869c-fcff86e39ce5"
+#define SETTING_WIFI_CONNECTION_STATUS_CHARACTERISTIC_UUID "6dfba204-77ac-437b-8b5a-194d2545c587"
+#define SETTING_DEVICE_INFO_CHARACTERISTIC_UUID "b023daf1-980f-4c91-826d-0f0b0e3675c2"
 
 #define DOUT 4
 #define PD_SCK 2
+#define DEFAULT_CALIBRATION 198.f
+
 HX711 scale(DOUT, PD_SCK);
 BLEServer *pServer;
-BLECharacteristic *loadCellCharacteristic;
+BLECharacteristic *loadCellWeightCharacteristic;
 BLECharacteristic *settingCharacteristic;
 
 bool client_is_connected = false;
@@ -36,7 +37,32 @@ unsigned long lastWeightPostTime = 0;
 unsigned long lastWeightNotifyTime = 0;
 const unsigned long weightPostInterval = 600000;
 const unsigned long weightNotifyInterval = 500;
-float scale_factor = 198.f;
+
+void connectToWiFi(const char *ssid, const char *password)
+{
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi...");
+  unsigned long startTime = millis();
+  unsigned long timeout = 10000;
+
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    if (millis() - startTime >= timeout)
+    {
+      Serial.println("Failed to connect to WiFi: Timeout");
+      wifi_is_connected = false;
+      settingCharacteristic->setValue("fail");
+      settingCharacteristic->notify();
+      return;
+    }
+    delay(500);
+    Serial.print(".");
+  }
+  wifi_is_connected = true;
+  settingCharacteristic->setValue("success");
+  settingCharacteristic->notify();
+  Serial.println("Connected to WiFi");
+}
 
 class BaseBLEServerCallbacks : public BLEServerCallbacks
 {
@@ -55,7 +81,7 @@ class BaseBLEServerCallbacks : public BLEServerCallbacks
 };
 class LoadCellTareCallback : public BLECharacteristicCallbacks
 {
-  void onWrite(BLECharacteristic *pCharacteristic) override
+  void onRead(BLECharacteristic *pCharacteristic) override
   {
     Serial.println("offset");
     load_cell_sampling_enabled = false;
@@ -65,16 +91,11 @@ class LoadCellTareCallback : public BLECharacteristicCallbacks
     load_cell_sampling_enabled = true;
   }
 };
-class SampleLoadCellCallback : public BLECharacteristicCallbacks
+class LoadCellWeightCallBack : public BLECharacteristicCallbacks
 {
   void onRead(BLECharacteristic *pCharacteristic)
   {
-    Serial.println("SampleLoadCellCallback->onRead: Called");
     float weight = scale.get_units();
-    Serial.print("Weight: ");
-    Serial.print(weight, 1);
-    Serial.println(" kg");
-    std::string result = "{weight: " + std::to_string(weight) + "}";
     pCharacteristic->setValue(weight);
   }
 };
@@ -88,10 +109,21 @@ class LoadCellCalibrationCallback : public BLECharacteristicCallbacks
 
     float floatValue = atof(value.c_str());
     Serial.print("Converted Float Value: ");
+    Serial.println(floatValue);
+
     scale.set_scale(floatValue);
+    saveCalibrationToEEPROM(floatValue);
   }
+
   void onRead(BLECharacteristic *pCharacteristic) override
   {
+    float calibrationValue = readCalibrationFromEEPROM();
+
+    if (calibrationValue == 0)
+    { 
+      calibrationValue = DEFAULT_CALIBRATION;
+    }
+    pCharacteristic->setValue(calibrationValue);
   }
 };
 class LoadCellDescriptorCallback : public BLEDescriptorCallbacks
@@ -130,59 +162,7 @@ class SettingDescriptorCallback : public BLEDescriptorCallbacks
     }
   }
 };
-
-void connectToWiFi(const char *ssid, const char *password)
-{
-  WiFi.begin(ssid, password);
-  Serial.print("Connecting to WiFi...");
-  unsigned long startTime = millis();
-  unsigned long timeout = 10000;
-
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    if (millis() - startTime >= timeout)
-    {
-      Serial.println("Failed to connect to WiFi: Timeout");
-      wifi_is_connected = false;
-      settingCharacteristic->setValue("fail");
-      settingCharacteristic->notify();
-      return;
-    }
-    delay(500);
-    Serial.print(".");
-  }
-  wifi_is_connected = true;
-  settingCharacteristic->setValue("success");
-  settingCharacteristic->notify();
-  Serial.println("Connected to WiFi");
-}
-void saveWiFiCredentialsToEEPROM(const char *ssid, const char *password)
-{
-  EEPROM.begin(EEPROM_SIZE);
-  for (int i = 0; i < 100; ++i)
-  {
-    EEPROM.write(EEPROM_SSID_START + i, ssid[i]);
-    EEPROM.write(EEPROM_PASS_START + i, password[i]);
-    if (ssid[i] == '\0' && password[i] == '\0')
-      break;
-  }
-  EEPROM.commit();
-  EEPROM.end();
-  Serial.println("WiFi credentials saved to EEPROM");
-}
-void readWiFiCredentialsFromEEPROM(char *ssid, char *password)
-{
-  EEPROM.begin(EEPROM_SIZE);
-  for (int i = 0; i < 100; ++i)
-  {
-    ssid[i] = EEPROM.read(EEPROM_SSID_START + i);
-    password[i] = EEPROM.read(EEPROM_PASS_START + i);
-    if (ssid[i] == '\0' && password[i] == '\0')
-      break;
-  }
-  EEPROM.end();
-}
-class SettingCharacteristicCallback : public BLECharacteristicCallbacks
+class SettingWifiCredentialCharacteristicCallback : public BLECharacteristicCallbacks
 {
   void onWrite(BLECharacteristic *pCharacteristic) override
   {
@@ -212,7 +192,43 @@ class SettingCharacteristicCallback : public BLECharacteristicCallbacks
   }
   void onRead(BLECharacteristic *pCharacteristic) override
   {
-    Serial.println("SampleLoadCellCallback->onRead: Called");
+    char ssid[100] = {0};
+    char password[100] = {0};
+
+    readWiFiCredentialsFromEEPROM(ssid, password);
+
+    if (strlen(ssid) == 0 || strlen(password) == 0)
+    {
+      Serial.println("No WiFi credentials found in EEPROM");
+      pCharacteristic->setValue("No credentials");
+    }
+    else
+    {
+      String credentials = String(ssid) + "," + String(password);
+      pCharacteristic->setValue(credentials.c_str());
+      Serial.print("Read credentials from EEPROM: ");
+      Serial.println(credentials);
+    }
+  }
+};
+class SettingWifiConnectionStatusCallBack : public BLECharacteristicCallbacks 
+{
+  void onRead(BLECharacteristic *pCharacteristic) override
+  {
+    if (wifi_is_connected)
+    {
+      pCharacteristic->setValue("connected");
+    }
+    else
+    {
+      pCharacteristic->setValue("disconnected");
+    }
+  }
+};
+class SettingDeviceInfoCallback : public BLECharacteristicCallbacks
+{
+  void onRead(BLECharacteristic *pCharacteristic) override
+  {
     pCharacteristic->setValue(String(DEVICE_UUID)+","+String(DEVICE_TYPE));
   }
 };
@@ -254,8 +270,8 @@ void loop()
 void notifyWeight(void)
 {
   float weight = scale.get_units(5);
-  loadCellCharacteristic->setValue(weight);
-  loadCellCharacteristic->notify();
+  loadCellWeightCharacteristic->setValue(weight);
+  loadCellWeightCharacteristic->notify();
 }
 void postWeight()
 {
@@ -317,24 +333,24 @@ void setUpBLEServer()
 }
 void setUpBLEService()
 {
-  BLEService *service = pServer->createService(SERVICE_UUID);
+  BLEService *service = pServer->createService(LOAD_CELL_SERVICE_UUID);
   BLEService *settingService = pServer->createService(SETTING_SERVICE_UUD);
 
-  // Weight/Load Cell Characteristic
-  loadCellCharacteristic = service->createCharacteristic(
-      CHARACTERISTIC_UUID,
+  // Weigh
+  loadCellWeightCharacteristic = service->createCharacteristic(
+      LOAD_CELL_WEIGHT_CHARACTERISTIC_UUID,
       BLECharacteristic::PROPERTY_READ |
           BLECharacteristic::PROPERTY_NOTIFY);
-  loadCellCharacteristic->setCallbacks(new SampleLoadCellCallback());
+  loadCellWeightCharacteristic->setCallbacks(new LoadCellWeightCallBack());
 
   BLEDescriptor *pLoadCellCCCDescriptor = new BLEDescriptor((uint16_t)0x2902);
   pLoadCellCCCDescriptor->setCallbacks(new LoadCellDescriptorCallback());
-  loadCellCharacteristic->addDescriptor(pLoadCellCCCDescriptor);
+  loadCellWeightCharacteristic->addDescriptor(pLoadCellCCCDescriptor);
 
   // Tare
   BLECharacteristic *loadCellTareCharacteristic = service->createCharacteristic(
       LOAD_CELL_TARE_CHARACTERISTIC_UUID,
-      BLECharacteristic::PROPERTY_WRITE);
+      BLECharacteristic::PROPERTY_READ);
   loadCellTareCharacteristic->setCallbacks(new LoadCellTareCallback());
 
   // Calibration
@@ -344,18 +360,29 @@ void setUpBLEService()
           BLECharacteristic::PROPERTY_READ);
   loadCellCalibrationCharacteristic->setCallbacks(new LoadCellCalibrationCallback());
 
-  // Setting
+  // Setting Wifi Credential
   settingCharacteristic = settingService->createCharacteristic(
-      SETTING_CHARACTERISTIC_UUID,
+      SETTING_WIFI_CREDENTIAL_CHARACTERISTIC_UUID,
       BLECharacteristic::PROPERTY_WRITE |
         BLECharacteristic::PROPERTY_NOTIFY |
         BLECharacteristic::PROPERTY_READ);
-  settingCharacteristic->setCallbacks(new SettingCharacteristicCallback());
-  settingCharacteristic->setValue(String(wifi_is_connected));
+  settingCharacteristic->setCallbacks(new SettingWifiCredentialCharacteristicCallback());
 
   BLEDescriptor *pSettingCCCDescriptor = new BLEDescriptor((uint16_t)0x2902);
   pSettingCCCDescriptor->setCallbacks(new SettingDescriptorCallback());
   settingCharacteristic->addDescriptor(pSettingCCCDescriptor);
+
+  // Setting Wifi Connection Status
+  settingCharacteristic = settingService->createCharacteristic(
+      SETTING_WIFI_CONNECTION_STATUS_CHARACTERISTIC_UUID,
+        BLECharacteristic::PROPERTY_READ);
+  settingCharacteristic->setCallbacks(new SettingWifiConnectionStatusCallBack());
+
+  // Setting Device Info
+  settingCharacteristic = settingService->createCharacteristic(
+      SETTING_DEVICE_INFO_CHARACTERISTIC_UUID,
+        BLECharacteristic::PROPERTY_READ);
+  settingCharacteristic->setCallbacks(new SettingDeviceInfoCallback());
 
   settingService->start();
   service->start();
@@ -364,7 +391,7 @@ void setupAdvertisementData(void)
 {
   BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
   pAdvertising->addServiceUUID(SETTING_SERVICE_UUD);
-  pAdvertising->addServiceUUID(SERVICE_UUID);
+  pAdvertising->addServiceUUID(LOAD_CELL_SERVICE_UUID);
   pAdvertising->setScanResponse(true);
   pAdvertising->setMinPreferred(0x06); // functions that help with iPhone connections issue
   pAdvertising->setMinPreferred(0x12);
@@ -396,6 +423,16 @@ void setupWiFi()
 }
 void setUpScale()
 {
-  scale.set_scale(scale_factor);
+  float calibrationValue = readCalibrationFromEEPROM();
+  if (calibrationValue != 0)
+  {
+    Serial.println("Using calibration value from EEPROM");
+    scale.set_scale(calibrationValue);
+  }
+  else
+  {
+    Serial.println("Using default calibration value");
+    scale.set_scale(DEFAULT_CALIBRATION);
+  }
   scale.tare();
 }
