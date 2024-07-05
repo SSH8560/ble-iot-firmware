@@ -8,6 +8,7 @@
 #include <HTTPClient.h>
 #include <EEPROM.h>
 #include <WiFiManager.h>
+#include <LED.h>
 
 #define DEVICE_UUID "b4506cfd-135d-466a-b2dc-a85de6586b84"
 #define DEVICE_TYPE "SCALE"
@@ -23,9 +24,12 @@
 
 #define DOUT 4
 #define PD_SCK 2
+#define WIFI_LED_PIN 18
 #define DEFAULT_CALIBRATION 198.f
 
 HX711 scale(DOUT, PD_SCK);
+WiFiManager *wifiManager;
+LED *wifiLED;
 BLEServer *pServer;
 BLECharacteristic *loadCellWeightCharacteristic;
 BLECharacteristic *wifiCredentialCharacteristic;
@@ -38,8 +42,6 @@ unsigned long lastWeightPostTime = 0;
 unsigned long lastWeightNotifyTime = 0;
 const unsigned long weightPostInterval = 600000;
 const unsigned long weightNotifyInterval = 500;
-
-WiFiManager wifi_manager();
 
 class BaseBLEServerCallbacks : public BLEServerCallbacks
 {
@@ -97,7 +99,7 @@ class LoadCellCalibrationCallback : public BLECharacteristicCallbacks
     float calibrationValue = readCalibrationFromEEPROM();
 
     if (calibrationValue == 0)
-    { 
+    {
       calibrationValue = DEFAULT_CALIBRATION;
     }
     pCharacteristic->setValue(calibrationValue);
@@ -178,7 +180,7 @@ class SettingWifiCredentialCharacteristicCallback : public BLECharacteristicCall
     Serial.print("Parsed Password: ");
     Serial.println(password);
 
-    wifi_manager.connectToWiFi(ssid.c_str(), password.c_str());
+    wifiManager->connectToWiFi(ssid.c_str(), password.c_str());
 
     saveWiFiCredentialsToEEPROM(ssid.c_str(), password.c_str());
     pCharacteristic->setValue(value);
@@ -205,11 +207,11 @@ class SettingWifiCredentialCharacteristicCallback : public BLECharacteristicCall
     }
   }
 };
-class SettingWifiConnectionStatusCallBack : public BLECharacteristicCallbacks 
+class SettingWifiConnectionStatusCallBack : public BLECharacteristicCallbacks
 {
   void onRead(BLECharacteristic *pCharacteristic) override
   {
-    if (wifi_manager.isConnected())
+    if (wifiManager->isConnected())
     {
       pCharacteristic->setValue("connected");
     }
@@ -223,13 +225,15 @@ class SettingDeviceInfoCallback : public BLECharacteristicCallbacks
 {
   void onRead(BLECharacteristic *pCharacteristic) override
   {
-    pCharacteristic->setValue(String(DEVICE_UUID)+","+String(DEVICE_TYPE));
+    pCharacteristic->setValue(String(DEVICE_UUID) + "," + String(DEVICE_TYPE));
   }
 };
 
 void setup()
 {
   Serial.begin(115200);
+  wifiLED = new LED(WIFI_LED_PIN);
+  wifiManager = new WiFiManager(wifiConnectionCharacteristic, wifiLED);
 
   setUpBLEServer();
   setUpBLEService();
@@ -251,7 +255,7 @@ void loop()
     }
   }
 
-  if (wifi_manager.isConnected())
+  if (wifiManager->isConnected())
   {
     if (currentTime - lastWeightPostTime >= weightPostInterval)
     {
@@ -269,7 +273,7 @@ void notifyWeight(void)
 }
 void postWeight()
 {
-  if (!wifi_manager.isConnected())
+  if (!wifiManager->isConnected())
   {
     Serial.println("WiFi is not connected. Cannot send data.");
     return;
@@ -288,8 +292,8 @@ void postWeight()
     http.addHeader("Authorization", "Bearer " API_KEY);
     http.addHeader("Content-Type", "application/json");
     http.addHeader("Prefer", "return=minimal");
-    String payload =  "{ \"value\": \"" + String(weight) + "\", " +
-                      "\"device_id\":\"" + DEVICE_UUID + "\" }";
+    String payload = "{ \"value\": \"" + String(weight) + "\", " +
+                     "\"device_id\":\"" + DEVICE_UUID + "\" }";
 
     int httpResponseCode = http.POST(payload);
 
@@ -362,8 +366,8 @@ void setUpBLEService()
   wifiCredentialCharacteristic = settingService->createCharacteristic(
       SETTING_WIFI_CREDENTIAL_CHARACTERISTIC_UUID,
       BLECharacteristic::PROPERTY_WRITE |
-        BLECharacteristic::PROPERTY_NOTIFY |
-        BLECharacteristic::PROPERTY_READ);
+          BLECharacteristic::PROPERTY_NOTIFY |
+          BLECharacteristic::PROPERTY_READ);
   wifiCredentialCharacteristic->setCallbacks(new SettingWifiCredentialCharacteristicCallback());
 
   BLEDescriptor *pSettingCCCDescriptor = new BLEDescriptor((uint16_t)0x2902);
@@ -373,8 +377,8 @@ void setUpBLEService()
   // Setting Wifi Connection Status
   wifiConnectionCharacteristic = settingService->createCharacteristic(
       SETTING_WIFI_CONNECTION_STATUS_CHARACTERISTIC_UUID,
-        BLECharacteristic::PROPERTY_NOTIFY |
-        BLECharacteristic::PROPERTY_READ);
+      BLECharacteristic::PROPERTY_NOTIFY |
+          BLECharacteristic::PROPERTY_READ);
   wifiConnectionCharacteristic->setCallbacks(new SettingWifiConnectionStatusCallBack());
 
   BLEDescriptor *pWifiConnectionCCCDescriptor = new BLEDescriptor((uint16_t)0x2902);
@@ -384,7 +388,7 @@ void setUpBLEService()
   // Setting Device Info
   BLECharacteristic *settingDeviceInfoCharacteristic = settingService->createCharacteristic(
       SETTING_DEVICE_INFO_CHARACTERISTIC_UUID,
-        BLECharacteristic::PROPERTY_READ);
+      BLECharacteristic::PROPERTY_READ);
   settingDeviceInfoCharacteristic->setCallbacks(new SettingDeviceInfoCallback());
 
   settingService->start();
@@ -413,9 +417,9 @@ void setupWiFi()
     return;
   }
 
-  wifi_manager.connectToWiFi(ssid, password);
+  wifiManager->connectToWiFi(ssid, password);
 
-  if (wifi_manager.isConnected())
+  if (wifiManager->isConnected())
   {
     Serial.println("WiFi connected using credentials from EEPROM");
   }

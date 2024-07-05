@@ -1,7 +1,9 @@
 #include "WiFiManager.h"
 
-WiFiManager::WiFiManager()
+WiFiManager::WiFiManager(BLECharacteristic *wifiConnectionCharacteristic, LED *wifiLED)
 {
+    this->wifiConnectionCharacteristic = wifiConnectionCharacteristic;
+    this->wifiLED = wifiLED;
 }
 
 void WiFiManager::connectToWiFi(const char *ssid, const char *password)
@@ -16,15 +18,43 @@ void WiFiManager::connectToWiFi(const char *ssid, const char *password)
         if (millis() - startTime >= timeout)
         {
             Serial.println("Failed to connect to WiFi: Timeout");
+            onDisconnect();
             return;
         }
         delay(500);
         Serial.print(".");
     }
+    onConnect();
     Serial.println("Connected to WiFi");
 }
 
 bool WiFiManager::isConnected()
 {
-    return WL_CONNECTED;
+    return WiFi.status() == WL_CONNECTED;
+}
+
+void WiFiManager::onConnect()
+{
+    if (wifiConnectionCharacteristic)
+    {
+        wifiConnectionCharacteristic->setValue("connected");
+        wifiConnectionCharacteristic->notify();
+    }
+    if (wifiLED)
+    {
+        wifiLED->on();
+    }
+}
+
+void WiFiManager::onDisconnect()
+{
+    if (wifiConnectionCharacteristic)
+    {
+        wifiConnectionCharacteristic->setValue("disconnected");
+        wifiConnectionCharacteristic->notify();
+    }
+    if (wifiLED)
+    {
+        wifiLED->off();
+    }
 }
