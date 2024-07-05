@@ -40,18 +40,18 @@ void saveCalibrationToEEPROM(float calibrationValue)
 
 float readCalibrationFromEEPROM()
 {
-  EEPROM.begin(EEPROM_SIZE);
-  float calibrationValue = 0;
-  EEPROM.get(EEPROM_CALIBRATION, calibrationValue);
-  EEPROM.end();
+    EEPROM.begin(EEPROM_SIZE);
+    float calibrationValue = 0;
+    EEPROM.get(EEPROM_CALIBRATION, calibrationValue);
+    EEPROM.end();
 
-  if (isnan(calibrationValue) || calibrationValue > 1e6 || calibrationValue < -1e6)
-  {
-    Serial.println("Invalid calibration value read from EEPROM");
-    return 0; 
-  }
+    if (isnan(calibrationValue) || calibrationValue > 1e6 || calibrationValue < -1e6)
+    {
+        Serial.println("Invalid calibration value read from EEPROM");
+        return 0;
+    }
 
-  Serial.print("Calibration value read from EEPROM: ");
-  Serial.println(calibrationValue);
-  return calibrationValue;
+    Serial.print("Calibration value read from EEPROM: ");
+    Serial.println(calibrationValue);
+    return calibrationValue;
 }

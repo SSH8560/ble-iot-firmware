@@ -1,3 +1,5 @@
+#include <Secrets.h>
+#include <EEPROMUtils.h>
 #include <BLEDevice.h>
 #include <BLEUtils.h>
 #include <BLEServer.h>
@@ -5,8 +7,7 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <EEPROM.h>
-#include "secrets.h"
-#include "EEPROMUtils.h"
+#include <WiFiManager.h>
 
 #define DEVICE_UUID "b4506cfd-135d-466a-b2dc-a85de6586b84"
 #define DEVICE_TYPE "SCALE"
@@ -31,7 +32,6 @@ BLECharacteristic *wifiCredentialCharacteristic;
 BLECharacteristic *wifiConnectionCharacteristic;
 
 bool client_is_connected = false;
-bool wifi_is_connected = false;
 bool load_cell_sampling_enabled = false;
 
 unsigned long lastWeightPostTime = 0;
@@ -39,31 +39,7 @@ unsigned long lastWeightNotifyTime = 0;
 const unsigned long weightPostInterval = 600000;
 const unsigned long weightNotifyInterval = 500;
 
-void connectToWiFi(const char *ssid, const char *password)
-{
-  WiFi.begin(ssid, password);
-  Serial.print("Connecting to WiFi...");
-  unsigned long startTime = millis();
-  unsigned long timeout = 10000;
-
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    if (millis() - startTime >= timeout)
-    {
-      Serial.println("Failed to connect to WiFi: Timeout");
-      wifi_is_connected = false;
-      wifiConnectionCharacteristic->setValue("disconnected");
-      wifiConnectionCharacteristic->notify();
-      return;
-    }
-    delay(500);
-    Serial.print(".");
-  }
-  wifi_is_connected = true;
-  wifiConnectionCharacteristic->setValue("connected");
-  wifiConnectionCharacteristic->notify();
-  Serial.println("Connected to WiFi");
-}
+WiFiManager wifi_manager();
 
 class BaseBLEServerCallbacks : public BLEServerCallbacks
 {
@@ -168,7 +144,6 @@ class WifiConnectionDescriptorCallback : public BLEDescriptorCallbacks
   void onWrite(BLEDescriptor *pDescriptor)
   {
     u_int8_t desc = (*(pDescriptor->getValue()));
-    Serial.println(std::to_string(desc).c_str());
     if (desc == 1)
     {
       Serial.println("Notify on");
@@ -203,7 +178,7 @@ class SettingWifiCredentialCharacteristicCallback : public BLECharacteristicCall
     Serial.print("Parsed Password: ");
     Serial.println(password);
 
-    connectToWiFi(ssid.c_str(), password.c_str());
+    wifi_manager.connectToWiFi(ssid.c_str(), password.c_str());
 
     saveWiFiCredentialsToEEPROM(ssid.c_str(), password.c_str());
     pCharacteristic->setValue(value);
@@ -234,7 +209,7 @@ class SettingWifiConnectionStatusCallBack : public BLECharacteristicCallbacks
 {
   void onRead(BLECharacteristic *pCharacteristic) override
   {
-    if (wifi_is_connected)
+    if (wifi_manager.isConnected())
     {
       pCharacteristic->setValue("connected");
     }
@@ -276,7 +251,7 @@ void loop()
     }
   }
 
-  if (wifi_is_connected)
+  if (wifi_manager.isConnected())
   {
     if (currentTime - lastWeightPostTime >= weightPostInterval)
     {
@@ -294,7 +269,7 @@ void notifyWeight(void)
 }
 void postWeight()
 {
-  if (!wifi_is_connected)
+  if (!wifi_manager.isConnected())
   {
     Serial.println("WiFi is not connected. Cannot send data.");
     return;
@@ -438,9 +413,9 @@ void setupWiFi()
     return;
   }
 
-  connectToWiFi(ssid, password);
+  wifi_manager.connectToWiFi(ssid, password);
 
-  if (wifi_is_connected)
+  if (wifi_manager.isConnected())
   {
     Serial.println("WiFi connected using credentials from EEPROM");
   }
