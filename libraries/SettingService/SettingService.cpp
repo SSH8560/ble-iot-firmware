@@ -5,11 +5,9 @@
 #include <BLEUtils.h>
 #include <BLEServer.h>
 
-// 전역 변수 정의
 BLECharacteristic *wifiCredentialCharacteristic;
 BLECharacteristic *wifiConnectionCharacteristic;
 
-// 설정 서비스 및 특성 설정 함수 구현
 void setUpSettingService(BLEServer *pServer, WiFiManager *wifiManager, const char *deviceUUID, const char *deviceType)
 {
     BLEService *settingService = pServer->createService(SETTING_SERVICE_UUD);
@@ -47,7 +45,6 @@ void setUpSettingService(BLEServer *pServer, WiFiManager *wifiManager, const cha
     pAdvertising->addServiceUUID(SETTING_SERVICE_UUD);
 }
 
-// 콜백 클래스 구현
 void SettingWifiCredentialCharacteristicCallback::onWrite(BLECharacteristic *pCharacteristic)
 {
     String value = pCharacteristic->getValue();

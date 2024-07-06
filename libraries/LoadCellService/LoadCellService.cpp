@@ -2,11 +2,10 @@
 
 BLECharacteristic *loadCellWeightCharacteristic;
 bool load_cell_sampling_enabled = false;
-// LoadCellTareCharacteristicCallback 클래스의 onRead 메소드 구현
+
 void LoadCellTareCharacteristicCallback::onRead(BLECharacteristic *pCharacteristic)
 {
     Serial.println("offset");
-    // 로드셀 샘플링을 일시 중지하고 테어링을 수행합니다.
     load_cell_sampling_enabled = false;
     delay(100);
     loadCellManager->getWeight();
@@ -14,7 +13,6 @@ void LoadCellTareCharacteristicCallback::onRead(BLECharacteristic *pCharacterist
     load_cell_sampling_enabled = true;
 }
 
-// LoadCellWeightCharacteristicCallBack 클래스의 onRead 메소드 구현
 void LoadCellWeightCharacteristicCallBack::onRead(BLECharacteristic *pCharacteristic)
 {
     Serial.println("Read Weight");
@@ -23,7 +21,6 @@ void LoadCellWeightCharacteristicCallBack::onRead(BLECharacteristic *pCharacteri
     Serial.println(weight);
 }
 
-// LoadCellCalibrationCharacteristicCallback 클래스의 onWrite 메소드 구현
 void LoadCellCalibrationCharacteristicCallback::onWrite(BLECharacteristic *pCharacteristic)
 {
     String value = pCharacteristic->getValue();
@@ -32,7 +29,6 @@ void LoadCellCalibrationCharacteristicCallback::onWrite(BLECharacteristic *pChar
     saveCalibrationToEEPROM(floatValue);
 }
 
-// LoadCellCalibrationCharacteristicCallback 클래스의 onRead 메소드 구현
 void LoadCellCalibrationCharacteristicCallback::onRead(BLECharacteristic *pCharacteristic)
 {
     float calibrationValue = readCalibrationFromEEPROM();
@@ -60,7 +56,6 @@ void LoadCellWeightCharacteristicDescriptorCallback::onWrite(BLEDescriptor *pDes
     }
 }
 
-// LoadCell 서비스 설정 함수
 void setUpLoadCellService(BLEServer *pServer, LoadCellManager *loadCellManager)
 {
     BLEService *service = pServer->createService(LOAD_CELL_SERVICE_UUID);
