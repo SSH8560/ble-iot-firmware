@@ -2,6 +2,8 @@
     "files.associations": {
         "queue.h": "c",
         "esp32-hal.h": "c",
-        "soc_caps.h": "c"
+        "soc_caps.h": "c",
+        "memory": "cpp",
+        "string": "cpp"
     }
 }

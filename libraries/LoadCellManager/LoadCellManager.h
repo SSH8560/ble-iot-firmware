@@ -3,10 +3,10 @@
 
 #include <HX711.h>
 
-class LoadCellManager {
+class LoadCellManager
+{
 public:
-    LoadCellManager(int dout, int pd_sck);
-    void setup(float calibrationValue);
+    LoadCellManager(int dout, int pd_sck, float defaultCalibration);
     float getWeight(int times = 5);
     void tare();
     void setCalibration(float calibrationValue);
