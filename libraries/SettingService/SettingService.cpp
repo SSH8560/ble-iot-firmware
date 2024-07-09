@@ -21,6 +21,7 @@ void setUpSettingService(BLEServer *pServer, WiFiManager *wifiManager, const cha
     wifiCredentialCharacteristic->setCallbacks(new SettingWifiCredentialCharacteristicCallback(wifiManager));
 
     BLEDescriptor *pSettingCCCDescriptor = new BLEDescriptor((uint16_t)0x2902);
+    pSettingCCCDescriptor->setCallbacks(new WifiCredentialCharacteristicDescriptorCallback());
     wifiCredentialCharacteristic->addDescriptor(pSettingCCCDescriptor);
 
     // Setting Wifi Connection Status
@@ -31,6 +32,7 @@ void setUpSettingService(BLEServer *pServer, WiFiManager *wifiManager, const cha
     wifiConnectionCharacteristic->setCallbacks(new SettingWifiConnectionStatusCallBack(wifiManager));
 
     BLEDescriptor *pWifiConnectionCCCDescriptor = new BLEDescriptor((uint16_t)0x2902);
+    pWifiConnectionCCCDescriptor->setCallbacks(new WifiConnectionCharacteristicDescriptorCallback());
     wifiConnectionCharacteristic->addDescriptor(pWifiConnectionCCCDescriptor);
 
     // Setting Device Info
@@ -43,6 +45,32 @@ void setUpSettingService(BLEServer *pServer, WiFiManager *wifiManager, const cha
 
     BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
     pAdvertising->addServiceUUID(SETTING_SERVICE_UUD);
+}
+
+void WifiCredentialCharacteristicDescriptorCallback::onWrite(BLEDescriptor *pDescriptor)
+{
+    u_int8_t desc = (*(pDescriptor->getValue()));
+    if (desc == 1)
+    {
+        Serial.println("wifiCredential Notify on");
+    }
+    else
+    {
+        Serial.println("wifiCredential Notify off");
+    }
+}
+
+void WifiConnectionCharacteristicDescriptorCallback::onWrite(BLEDescriptor *pDescriptor)
+{
+    u_int8_t desc = (*(pDescriptor->getValue()));
+    if (desc == 1)
+    {
+        Serial.println("wifiConnection Notify on");
+    }
+    else
+    {
+        Serial.println("wifiConnection Notify off");
+    }
 }
 
 void SettingWifiCredentialCharacteristicCallback::onWrite(BLECharacteristic *pCharacteristic)

@@ -55,3 +55,25 @@ float readCalibrationFromEEPROM()
     Serial.println(calibrationValue);
     return calibrationValue;
 }
+
+void writeDistanceChangeThreshold(int threshold)
+{
+    EEPROM.begin(EEPROM_SIZE);
+    EEPROM.put(EEPROM_DISTANCE_THRESHOLD, threshold);
+    EEPROM.commit();
+    EEPROM.end();
+    Serial.print("Distance change threshold saved to EEPROM: ");
+    Serial.println(threshold);
+}
+
+int readDistanceChangeThreshold()
+{
+    EEPROM.begin(EEPROM_SIZE);
+    int threshold = 0;
+    EEPROM.get(EEPROM_DISTANCE_THRESHOLD, threshold);
+    EEPROM.end();
+
+    Serial.print("Distance change threshold read from EEPROM: ");
+    Serial.println(threshold);
+    return threshold;
+}

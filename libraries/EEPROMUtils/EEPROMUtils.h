@@ -7,10 +7,13 @@
 #define EEPROM_SSID_START 0
 #define EEPROM_PASS_START 100
 #define EEPROM_CALIBRATION 200
+#define EEPROM_DISTANCE_THRESHOLD 200
 
 void saveWiFiCredentialsToEEPROM(const char *ssid, const char *password);
 void readWiFiCredentialsFromEEPROM(char *ssid, char *password);
 void saveCalibrationToEEPROM(float calibrationValue);
 float readCalibrationFromEEPROM();
+void writeDistanceChangeThreshold(int threshold);
+int readDistanceChangeThreshold();
 
 #endif

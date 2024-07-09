@@ -11,7 +11,7 @@
 #include <UltrasonicSensor.h>
 #include <LED.h>
 #include <SettingService.h>
-#include <UltrasonicService.h>
+#include <DistanceService.h>
 #include <BLEServerSetup.h>
 
 #define DEVICE_UUID "2344fd60-1f17-4c1a-8e92-2f67a313fd9a"
@@ -29,7 +29,6 @@ LED *wifiLED;
 LED *bleLED;
 extern BLEServer *pServer;
 extern BLECharacteristic *distanceCharacteristic;
-
 extern bool client_is_connected;
 
 unsigned long lastDistanceNotifyTime = 0;
@@ -44,7 +43,7 @@ void setup()
     ultrasonicSensor = new UltrasonicSensor(TRIG_PIN, ECHO_PIN);
     setUpBLEServer(DEVICE_UUID, DEVICE_TYPE, bleLED);
     setUpSettingService(pServer, wifiManager, DEVICE_UUID, DEVICE_TYPE);
-    setUpUltrasonicService(pServer, ultrasonicSensor);
+    setUpDistanceService(pServer, ultrasonicSensor);
     startAdvertisement();
     Serial.println("Setup Complete");
 }

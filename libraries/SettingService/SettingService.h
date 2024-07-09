@@ -50,4 +50,16 @@ private:
     const char *deviceType;
 };
 
+class WifiConnectionCharacteristicDescriptorCallback : public BLEDescriptorCallbacks
+{
+public:
+    void onWrite(BLEDescriptor *pDescriptor) override;
+};
+
+class WifiCredentialCharacteristicDescriptorCallback : public BLEDescriptorCallbacks
+{
+public:
+    void onWrite(BLEDescriptor *pDescriptor) override;
+};
+
 #endif
